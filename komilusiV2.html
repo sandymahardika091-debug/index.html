@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulator Comminution — PILM (Politeknik Industri Logam Morowali)</title>
+  <meta name="description" content="Simulator crushing & grinding berbasis Kick, Rittinger, Bond. Warna khas: putih, merah, hitam." />
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --pilm-red:#b30000; /* khas merah */
+      --pilm-black:#0b0b0b;
+      --bg:#ffffff;
+    }
+    html,body{height:100%;}
+    body{background:var(--bg);color:var(--pilm-black);font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial}
+    /* smooth transitions */
+    .ease-soft{transition:all .28s cubic-bezier(.2,.9,.2,1)}
+    /* make sure right image never overflows */
+    .sim-image{max-height:520px;object-fit:contain;width:100%}
+    /* subtle card shadow */
+    .card{background:#fff;border-radius:.75rem;box-shadow:0 6px 20px rgba(11,11,11,0.06);}
+    /* prevent stacking: use grid with gaps */
+    @media (min-width:1024px){
+      .col-layout{grid-template-columns:360px 1fr 420px}
+    }
+  </style>
+</head>
+<body class="antialiased">
+
+  <!-- Header -->
+  <header class="border-b" role="banner">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-md bg-[var(--pilm-red)] flex items-center justify-center text-white font-bold">P</div>
+        <div>
+          <h1 class="text-lg font-semibold">Simulator Comminution — PILM</h1>
+          <div class="text-xs text-slate-500">Crushing & Grinding — Kick | Rittinger | Bond</div>
+        </div>
+      </div>
+      <nav class="flex items-center gap-4 text-sm">
+        <span class="text-slate-600">Warna: <b class="text-[var(--pilm-red)]">Merah</b> • <b class="text-black">Hitam</b></span>
+        <button id="exportReport" class="px-3 py-2 border rounded-md text-sm hover:bg-slate-100 ease-soft">Unduh Laporan (PNG)</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main layout: left: controls, center: outputs+charts, right: simulation image -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="grid gap-6 col-layout">
+
+      <!-- LEFT: Controls -->
+      <aside class="card p-5 ease-soft">
+        <h2 class="font-semibold text-base">Pengaturan Simulasi</h2>
+        <p class="text-xs text-slate-500 mt-1">Pilih alat, masukkan parameter. Rumus inti: Kick, Rittinger, Bond.</p>
+
+        <form id="simSettings" class="mt-4 space-y-3">
+          <label class="block text-sm">
+            <span class="text-xs">Tahap / Alat</span>
+            <select id="equipment" class="mt-1 block w-full p-2 border rounded-md">
+              <option value="jaw">Jaw Crusher (Crushing)</option>
+              <option value="gyratory">Gyratory Crusher</option>
+              <option value="roll">Roll Crusher</option>
+              <option value="sag">SAG Mill (Grinding)</option>
+              <option value="ball">Ball Mill (Grinding)</option>
+              <option value="rod">Rod Mill (Grinding)</option>
+              <option value="hpgr">HPGR</option>
+            </select>
+          </label>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-sm">
+              <span class="text-xs">Ukuran Awal D₁ (µm)</span>
+              <input id="D1" type="number" min="1" value="10000" class="mt-1 p-2 border rounded-md" />
+            </label>
+            <label class="text-sm">
+              <span class="text-xs">Ukuran Akhir D₂ (µm)</span>
+              <input id="D2" type="number" min="1" value="150" class="mt-1 p-2 border rounded-md" />
+            </label>
+          </div>
+
+          <label class="text-sm">
+            <span class="text-xs">Work Index Wi (kWh/ton) — untuk Bond</span>
+            <input id="Wi" type="number" step="0.1" value="12" class="mt-1 p-2 border rounded-md" />
+          </label>
+
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-sm">
+              <span class="text-xs">Feed (ton/h)</span>
+              <input id="Q" type="number" step="0.1" value="50" class="mt-1 p-2 border rounded-md" />
+            </label>
+            <label class="text-sm">
+              <span class="text-xs">Density (ton/m³)</span>
+              <input id="rho" type="number" step="0.01" value="2.7" class="mt-1 p-2 border rounded-md" />
+            </label>
+          </div>
+
+          <fieldset class="mt-1">
+            <legend class="text-xs font-medium">Metode Energi</legend>
+            <div class="flex gap-3 mt-2 text-sm">
+              <label class="flex items-center gap-2"><input type="radio" name="method" value="kick" checked />Kick</label>
+              <label class="flex items-center gap-2"><input type="radio" name="method" value="rittinger" />Rittinger</label>
+              <label class="flex items-center gap-2"><input type="radio" name="method" value="bond" />Bond</label>
+            </div>
+          </fieldset>
+
+          <div class="flex gap-2 mt-3">
+            <button id="runSim" type="button" class="flex-1 px-3 py-2 rounded-md bg-[var(--pilm-red)] text-white font-medium">Jalankan</button>
+            <button id="resetSim" type="button" class="px-3 py-2 rounded-md border">Reset</button>
+          </div>
+
+          <div class="text-xs text-slate-500 mt-2">Catatan: model ideal/empiris — sesuaikan Wi & skala faktor untuk mendekati kondisi nyata.</div>
+        </form>
+      </aside>
+
+      <!-- CENTER: Results & Charts -->
+      <section class="card p-5 ease-soft">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="font-semibold">Hasil Simulasi</h3>
+            <p class="text-xs text-slate-500 mt-1">Angka dihitung per ton (kWh/ton) kecuali dinyatakan lain.</p>
+          </div>
+          <div class="flex gap-2">
+            <button id="downloadCSV" class="px-3 py-2 border rounded-md text-sm">Download CSV</button>
+            <button id="downloadCharts" class="px-3 py-2 border rounded-md text-sm">Download Grafik</button>
+          </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-4 rounded border">
+            <div class="grid gap-2 text-sm">
+              <div class="flex justify-between"><span class="text-slate-600">Metode</span><b id="resMethod">-</b></div>
+              <div class="flex justify-between"><span class="text-slate-600">Energi spesifik E (kWh/ton)</span><b id="resE">-</b></div>
+              <div class="flex justify-between"><span class="text-slate-600">D₁ (µm)</span><b id="resD1">-</b></div>
+              <div class="flex justify-between"><span class="text-slate-600">D₂ (µm)</span><b id="resD2">-</b></div>
+              <div class="flex justify-between"><span class="text-slate-600">Daya (kW)</span><b id="resPower">-</b></div>
+              <div class="flex justify-between"><span class="text-slate-600">Feed (ton/h)</span><b id="resQ">-</b></div>
+            </div>
+          </div>
+
+          <div class="p-4 rounded border">
+            <h4 class="text-sm font-medium">Ringkasan</h4>
+            <div id="resSummary" class="mt-2 text-sm text-slate-600">Jalankan simulasi untuk melihat ringkasan.</div>
+          </div>
+        </div>
+
+        <hr class="my-4" />
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="p-3 rounded bg-slate-50">
+            <h4 class="text-sm font-medium mb-2">Distribusi Ukuran (PSD, contoh)</h4>
+            <canvas id="psdChart" height="220"></canvas>
+          </div>
+          <div class="p-3 rounded bg-slate-50">
+            <h4 class="text-sm font-medium mb-2">Perbandingan Energi (Kick vs Rittinger vs Bond)</h4>
+            <canvas id="eChart" height="220"></canvas>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- RIGHT: Simulation illustration -->
+      <aside class="card p-5 ease-soft">
+        <h3 class="font-semibold">Ilustrasi Proses</h3>
+        <p class="text-xs text-slate-500 mt-1">Gambar berubah sesuai alat yang dipilih. Klik kanan -> simpan gambar untuk unduh.</p>
+
+        <div class="mt-4 flex items-center justify-center">
+          <!-- SVG placeholder: will be replaced/updated by JS for each equipment -->
+          <div id="simCanvas" class="w-full h-80 flex items-center justify-center">
+            <!-- default image: jaw crusher simple SVG -->
+          </div>
+        </div>
+
+        <div class="mt-4 text-xs text-slate-500">Transisi gambar halus. Pastikan area cukup luas agar gambar terlihat penuh.</div>
+      </aside>
+
+    </div>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-6 py-4 text-xs text-slate-500">© Politeknik Industri Logam Morowali — Simulator edukasi. Hasil adalah estimasi.</footer>
+
+
+  <script>
+    /* --- Utility & Physics formulas --- */
+    function kickEnergy(D1, D2, kK = 1.2) { return kK * Math.log(D1 / D2); }
+    function rittingerEnergy(D1, D2, kR = 1e4) { return kR * (1 / D2 - 1 / D1); }
+    function bondEnergy(D1, D2, Wi = 12) { return Wi * (1 / Math.sqrt(D2) - 1 / Math.sqrt(D1)); }
+
+    function generatePSD(D1, D2, bins = 10) {
+      // log-normal-like toy PSD between D1 and D2
+      const logD1 = Math.log(D1);
+      const logD2 = Math.log(D2);
+      const mean = (logD1 + logD2) / 2;
+      const sd = (logD1 - logD2) / 4;
+      const labels = [];
+      const values = [];
+      for (let i = 0; i < bins; i++) {
+        const t = i / (bins - 1);
+        const x = Math.exp(logD2 + t * (logD1 - logD2));
+        labels.push(Math.round(x) + ' µm');
+        // log-normal density (toy)
+        const z = (Math.log(x) - mean) / sd;
+        values.push(Math.exp(-0.5 * z * z));
+      }
+      // normalize to percent
+      const s = values.reduce((a, b) => a + b, 0);
+      return { labels, data: values.map(v => +(v / s * 100).toFixed(2)) };
+    }
+
+    /* --- DOM refs --- */
+    const equipment = document.getElementById('equipment');
+    const D1input = document.getElementById('D1');
+    const D2input = document.getElementById('D2');
+    const WiInput = document.getElementById('Wi');
+    const Qinput = document.getElementById('Q');
+    const rhoInput = document.getElementById('rho');
+    const runBtn = document.getElementById('runSim');
+    const resetBtn = document.getElementById('resetSim');
+
+    const resMethod = document.getElementById('resMethod');
+    const resE = document.getElementById('resE');
+    const resD1 = document.getElementById('resD1');
+    const resD2 = document.getElementById('resD2');
+    const resPower = document.getElementById('resPower');
+    const resQ = document.getElementById('resQ');
+    const resSummary = document.getElementById('resSummary');
+
+    const psdCtx = document.getElementById('psdChart').getContext('2d');
+    const eCtx = document.getElementById('eChart').getContext('2d');
+
+    // Charts
+    const psdChart = new Chart(psdCtx, { type: 'bar', data: { labels: [], datasets: [{ label: 'Mass %', data: [] }] }, options: { plugins:{legend:{display:false}}, responsive:true } });
+    const eChart = new Chart(eCtx, { type: 'bar', data: { labels: ['Kick','Rittinger','Bond'], datasets: [{ label: 'E (kWh/ton equiv)', data: [] }] }, options: { responsive:true } });
+
+    function computeAndRender() {
+      const D1 = parseFloat(D1input.value);
+      const D2 = parseFloat(D2input.value);
+      const Wi = parseFloat(WiInput.value) || 0;
+      const Q = parseFloat(Qinput.value) || 1;
+      const rho = parseFloat(rhoInput.value) || 2.7;
+      const method = document.querySelector('input[name="method"]:checked').value;
+
+      if (!(D1 > D2 && D2 > 0)) { alert('Pastikan D1 > D2 > 0 (µm).'); return; }
+
+      const E_k = kickEnergy(D1, D2);
+      const E_r = rittingerEnergy(D1, D2);
+      const E_b = bondEnergy(D1, D2, Wi);
+
+      let E;
+      if (method === 'kick') E = E_k; else if (method === 'rittinger') E = E_r; else E = E_b;
+
+      const power = E * Q; // kW
+
+      // update output fields
+      resMethod.textContent = method.toUpperCase();
+      resE.textContent = isFinite(E)? E.toFixed(4) : '-';
+      resD1.textContent = D1.toLocaleString();
+      resD2.textContent = D2.toLocaleString();
+      resPower.textContent = isFinite(power)? power.toFixed(2) : '-';
+      resQ.textContent = Q.toFixed(2);
+
+      resSummary.innerHTML = `Alat: <b>${equipment.options[equipment.selectedIndex].text}</b> — Energi terpilih: <b>${E.toFixed(4)}</b> kWh/ton. Estimasi daya: <b>${power.toFixed(2)}</b> kW untuk feed ${Q} t/h.`;
+
+      // PSD & energy chart
+      const psd = generatePSD(D1, D2, 12);
+      psdChart.data.labels = psd.labels;
+      psdChart.data.datasets[0].data = psd.data;
+      psdChart.update();
+
+      eChart.data.datasets[0].data = [Number(E_k.toFixed(4)), Number(E_r.toFixed(4)), Number(E_b.toFixed(4))];
+      eChart.update();
+
+      // update illustration
+      renderIllustration(equipment.value);
+
+      // save last result to allow CSV export
+      window._lastResult = { method, D1, D2, Wi, Q, rho, E, power, psd };
+    }
+
+    runBtn.addEventListener('click', computeAndRender);
+    resetBtn.addEventListener('click', () => { document.getElementById('simSettings').reset(); setTimeout(computeAndRender,50); });
+
+    // initial render
+    window.addEventListener('load', computeAndRender);
+
+    /* --- Export / Download features --- */
+    document.getElementById('downloadCSV').addEventListener('click', () => {
+      const r = window._lastResult;
+      if (!r) return alert('Jalankan simulasi terlebih dahulu.');
+      const rows = [];
+      rows.push(['Parameter','Value']);
+      rows.push(['Equipment', equipment.options[equipment.selectedIndex].text]);
+      rows.push(['Method', r.method]);
+      rows.push(['D1 (µm)', r.D1]);
+      rows.push(['D2 (µm)', r.D2]);
+      rows.push(['Wi (kWh/ton)', r.Wi]);
+      rows.push(['Feed (t/h)', r.Q]);
+      rows.push(['Power (kW)', r.power.toFixed(3)]);
+      rows.push([]);
+      rows.push(['PSD bin','Mass %']);
+      for (let i=0;i<r.psd.labels.length;i++){ rows.push([r.psd.labels[i], r.psd.data[i]]); }
+
+      const csv = rows.map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'simulator_comminution_result.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    // Download charts combined as PNG
+    document.getElementById('downloadCharts').addEventListener('click', async () => {
+      // render both charts to images and stitch on canvas
+      const c1 = document.getElementById('psdChart');
+      const c2 = document.getElementById('eChart');
+      // create temp canvas
+      const w = Math.max(c1.width, c2.width);
+      const h = c1.height + c2.height + 20;
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      // white bg
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
+
+      const img1 = new Image(); img1.src = c1.toDataURL('image/png');
+      const img2 = new Image(); img2.src = c2.toDataURL('image/png');
+
+      await new Promise(res => { img1.onload = res; });
+      ctx.drawImage(img1, 0, 0);
+      await new Promise(res => { img2.onload = res; });
+      ctx.drawImage(img2, 0, c1.height + 20);
+
+      const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = 'simulator_charts.png'; a.click();
+    });
+
+    // Export report (screencapture-like): draw center card + charts + illustration
+    document.getElementById('exportReport').addEventListener('click', async () => {
+      // We'll capture the main area by drawing charts and the sim illustration
+      const center = document.querySelector('main');
+      // simpler approach: download charts + save illustration separately (to keep performance)
+      document.getElementById('downloadCharts').click();
+      alert('Grafik sudah diunduh. Untuk laporan lebih lengkap, kumpulkan CSV + grafik + ilustrasi.');
+    });
+
+    /* --- Illustration rendering --- */
+    const simCanvas = document.getElementById('simCanvas');
+
+    function clearSim(){ simCanvas.innerHTML=''; }
+
+    function renderIllustration(key){
+      clearSim();
+      // fade-in
+      const wrapper = document.createElement('div'); wrapper.className='w-full h-full flex items-center justify-center p-4 ease-soft'; wrapper.style.opacity=0; wrapper.style.transition='opacity .4s ease';
+
+      if (key === 'jaw') wrapper.appendChild(createJawSVG());
+      else if (key === 'gyratory') wrapper.appendChild(createGyratorySVG());
+      else if (key === 'roll') wrapper.appendChild(createRollSVG());
+      else if (key === 'ball') wrapper.appendChild(createBallMillSVG());
+      else if (key === 'rod') wrapper.appendChild(createRodMillSVG());
+      else if (key === 'sag') wrapper.appendChild(createSAGSVG());
+      else if (key === 'hpgr') wrapper.appendChild(createHPGRSVG());
+      simCanvas.appendChild(wrapper);
+      requestAnimationFrame(()=> wrapper.style.opacity=1);
+    }
+
+    // Below are simple illustrative SVG generators (stylized, not technical drawings)
+    function createJawSVG(){
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#f8f8f8'/>
+        <g transform='translate(80,60)'>
+          <rect x='0' y='0' width='200' height='280' rx='8' fill='#fff' stroke='`+ 'var(--pilm-black)' +`' />
+          <path d='M10 30 L190 250' stroke='`+'var(--pilm-red)'+`' stroke-width='10' stroke-linecap='round'/>
+          <path d='M190 30 L10 250' stroke='`+'#333'+`' stroke-width='10' stroke-linecap='round' opacity='0.9'/>
+          <circle cx='100' cy='140' r='20' fill='`+'#f3f3f3'+`' stroke='#ddd'/>
+          <text x='0' y='15' fill='#666' font-size='14'>Jaw Crusher</text>
+        </g>
+        <g transform='translate(320,60)'>
+          <rect x='0' y='0' width='160' height='80' rx='8' fill='#fff' stroke='#eee' />
+          <text x='10' y='30' fill='#666' font-size='12'>Feed</text>
+          <rect x='0' y='110' width='160' height='80' rx='8' fill='#fff' stroke='#eee' />
+          <text x='10' y='140' fill='#666' font-size='12'>Product</text>
+        </g>
+      `;
+      return svg;
+    }
+
+    function createGyratorySVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fbfbfb'/>
+        <g transform='translate(80,60)'>
+          <circle cx='120' cy='140' r='80' fill='#fff' stroke='`+'var(--pilm-red)'+`' stroke-width='8'/>
+          <rect x='100' y='10' width='40' height='40' rx='6' fill='#fff' stroke='#ddd'/>
+          <text x='0' y='15' fill='#666' font-size='14'>Gyratory</text>
+        </g>
+        <g transform='translate(320,60)'>
+          <text x='0' y='20' fill='#666' font-size='13'>Feed → Cone → Product</text>
+        </g>
+      `; return svg;
+    }
+
+    function createRollSVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fff'/>
+        <g transform='translate(60,80)'>
+          <rect x='0' y='0' width='420' height='120' rx='8' fill='#f7f7f7' stroke='#eee'/>
+          <circle cx='140' cy='60' r='44' fill='`+'#ddd'+`' stroke='#ccc'/>
+          <circle cx='280' cy='60' r='44' fill='`+'#bbb'+`' stroke='#999'/>
+          <text x='0' y='-10' fill='#666' font-size='14'>Roll Crusher (two rolls)</text>
+        </g>
+      `; return svg;
+    }
+
+    function createBallMillSVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fff'/>
+        <g transform='translate(60,80)'>
+          <rect x='0' y='0' width='420' height='120' rx='60' fill='#f3f3f3' stroke='#ddd'/>
+          <g>
+            <circle cx='130' cy='60' r='12' fill='#bbb'/>
+            <circle cx='170' cy='70' r='10' fill='#aaa'/>
+            <circle cx='210' cy='50' r='14' fill='#c9c9c9'/>
+          </g>
+          <text x='0' y='-10' fill='#666' font-size='14'>Ball Mill (grinding media)</text>
+        </g>
+      `; return svg;
+    }
+
+    function createRodMillSVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fff'/>
+        <g transform='translate(60,80)'>
+          <rect x='0' y='0' width='420' height='120' rx='60' fill='#fafafa' stroke='#eee'/>
+          <rect x='90' y='35' width='260' height='10' rx='5' fill='#ccc' />
+          <rect x='90' y='55' width='260' height='10' rx='5' fill='#bbb' />
+          <text x='0' y='-10' fill='#666' font-size='14'>Rod Mill (rod media)</text>
+        </g>
+      `; return svg;
+    }
+
+    function createSAGSVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fff'/>
+        <g transform='translate(60,80)'>
+          <rect x='0' y='0' width='420' height='120' rx='60' fill='#fff8f8' stroke='#f3eaea'/>
+          <g>
+            <circle cx='130' cy='60' r='20' fill='#c4c4c4'/>
+            <circle cx='170' cy='60' r='8' fill='#b2b2b2'/>
+            <circle cx='210' cy='60' r='14' fill='#c9c9c9'/>
+          </g>
+          <text x='0' y='-10' fill='#666' font-size='14'>SAG Mill (ore + media)</text>
+        </g>
+      `; return svg;
+    }
+
+    function createHPGRSVG(){
+      const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 600 400'); svg.setAttribute('width','100%'); svg.setAttribute('height','100%');
+      svg.innerHTML = `
+        <rect x='20' y='40' width='560' height='320' rx='12' fill='#fff'/>
+        <g transform='translate(60,80)'>
+          <rect x='0' y='0' width='420' height='120' rx='8' fill='#f7f7f7' stroke='#eee'/>
+          <rect x='60' y='30' width='120' height='60' rx='8' fill='`+'var(--pilm-red)'+`' opacity='0.9'/>
+          <rect x='240' y='30' width='120' height='60' rx='8' fill='#333' opacity='0.9'/>
+          <text x='0' y='-10' fill='#666' font-size='14'>HPGR (high-pressure rolls)</text>
+        </g>
+      `; return svg;
+    }
+
+    // change illustration when selecting equipment
+    equipment.addEventListener('change', () => renderIllustration(equipment.value));
+
+    // right-click save: let user save svg by right-clicking in the element
+
+    // ensure layout doesn't overlap: responsive spacing handled by CSS
+
+  </script>
+</body>
+</html>
